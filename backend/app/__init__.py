@@ -1,0 +1,1 @@
+"""Sipe Sipe Gestión backend."""

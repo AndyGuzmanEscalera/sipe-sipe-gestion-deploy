@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ${GESTION_DB_CONTAINER:-sipe_gestion_db}
+    restart: unless-stopped
+    # Puerto ligado sólo a loopback: la base no queda expuesta a la red.
+    ports:
+      - "127.0.0.1:${GESTION_POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gestion_sipe}
+      POSTGRES_USER: ${POSTGRES_USER:-sipe_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatorio en .env}
+    volumes:
+      - gestion_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sipe_app} -d ${POSTGRES_DB:-gestion_sipe}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: ${GESTION_BACKEND_CONTAINER:-sipe_gestion_backend}
+    restart: unless-stopped
+    # Publicación: Cloudflare Tunnel -> http://127.0.0.1:8001
+    # El puerto queda ligado sólo a loopback: nunca se abre en el router.
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8001}:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-sipe_app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-gestion_sipe}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      STORAGE_ROOT: /app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # Persistencia de PDFs e imágenes. No se borra con `docker compose down`.
+      - gestion_storage:/app/storage
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+
+volumes:
+  gestion_postgres_data:
+  gestion_storage:

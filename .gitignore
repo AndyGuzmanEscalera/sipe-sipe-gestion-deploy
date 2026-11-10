@@ -1,0 +1,73 @@
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Node / Flutter (no forman parte de este repositorio)
+node_modules/
+flutter_app/
+.dart_tool/
+build/
+dist/
+
+# Artefactos y temporales
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*.pid
+.DS_Store
+Thumbs.db
+
+# Bases de datos locales de pruebas
+*.sqlite
+*.sqlite3
+*.db
+
+# Respaldos locales
+backups/
+backup/
+*.dump
+*.tar
+*.tar.gz
+*.tgz
+
+# Capturas y material interno de auditoría
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+screenshots/
+docs/auditoria/
+AUDITORIA_*.md
+
+# Claves privadas, certificados y credenciales
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa*
+id_ed25519*
+cloudflared*
+*.tunnel
+credentials*.json
