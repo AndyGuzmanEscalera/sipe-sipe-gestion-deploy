@@ -115,6 +115,21 @@ class Mayor(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     photo: Mapped[Media | None] = relationship()
 
+class Authority(Base):
+    __tablename__ = 'authorities'
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), default='')
+    professional_title: Mapped[str] = mapped_column(String(200), default='')
+    position: Mapped[str] = mapped_column(String(200), default='')
+    description: Mapped[str] = mapped_column(Text, default='')
+    photo_media_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('media.id'))
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+    photo: Mapped[Media | None] = relationship()
+
 class GacetaCategory(Base):
     __tablename__ = 'gaceta_categories'
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

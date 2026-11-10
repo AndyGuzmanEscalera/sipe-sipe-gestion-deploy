@@ -7,6 +7,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -19,12 +20,23 @@ from app.core.database import get_db
 from app.core.error_middleware import SafeErrorMiddleware
 from app.core.security import clear_refresh_cookie, set_refresh_cookie
 from app.core.storage import get_storage_service
-from app.models import GacetaCategory, GacetaDocument, InstitutionalContent, InstitutionalValue, Mayor, Media, Permission, Role, SiteSetting, User
+from app.models import Authority, GacetaCategory, GacetaDocument, InstitutionalContent, InstitutionalValue, Mayor, Media, Permission, Role, SiteSetting, User
 from app.common.schemas import PaginatedResponse, paginate
 
 settings = get_settings()
 app = FastAPI(title='Sipe Sipe Gestión API', version=settings.app_version)
 app.add_middleware(SafeErrorMiddleware)
+
+
+class PublicCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith('/api/public/'):
+            response.headers.setdefault('Cache-Control', 'public, max-age=30')
+        return response
+
+
+app.add_middleware(PublicCacheMiddleware)
 configure_cors(app, settings)
 
 class LoginRequest(BaseModel):
@@ -63,6 +75,13 @@ class ValuePayload(BaseModel):
     value: str = Field(min_length=1, max_length=500)
     sort_order: int = 0
     is_active: bool = True
+
+class AuthorityOrderItem(BaseModel):
+    id: uuid.UUID
+    display_order: int
+
+class AuthorityReorderPayload(BaseModel):
+    items: list[AuthorityOrderItem]
 
 class CategoryPayload(BaseModel):
     name: str = Field(min_length=1, max_length=150)
@@ -285,6 +304,119 @@ def deactivate_value(value_id: uuid.UUID, user: User = Depends(require_permissio
     if row is None: raise HTTPException(404, 'Valor no encontrado')
     row.is_active = False; db.commit(); return {'id': str(row.id), 'is_active': False}
 
+def authority_response(row: Authority) -> dict:
+    return {
+        'id': str(row.id),
+        'name': row.name,
+        'professional_title': row.professional_title,
+        'position': row.position,
+        'description': row.description,
+        'display_order': row.display_order,
+        'is_active': row.is_active,
+        'is_published': row.is_published,
+        'photo': media_response(row.photo),
+    }
+
+@app.get('/api/public/authorities')
+def public_authorities(db: Session = Depends(get_db)):
+    rows = db.scalars(
+        select(Authority)
+        .where(Authority.is_active.is_(True), Authority.is_published.is_(True))
+        .order_by(Authority.display_order, Authority.created_at)
+    ).all()
+    return [authority_response(x) for x in rows]
+
+@app.get('/api/admin/authorities')
+def admin_authorities(user: User = Depends(require_permission('gestion.authorities.read')), db: Session = Depends(get_db)):
+    rows = db.scalars(select(Authority).order_by(Authority.display_order, Authority.created_at)).all()
+    return [authority_response(x) for x in rows]
+
+@app.post('/api/admin/authorities')
+def create_authority(
+    name: str = Form(''),
+    professional_title: str = Form(''),
+    position: str = Form(''),
+    description: str = Form(''),
+    display_order: int = Form(0),
+    is_published: bool = Form(False),
+    photo: UploadFile | None = File(default=None),
+    user: User = Depends(require_permission('gestion.authorities.manage')),
+    db: Session = Depends(get_db),
+):
+    row = Authority(
+        name=name,
+        professional_title=professional_title,
+        position=position,
+        description=description,
+        display_order=display_order,
+        is_published=is_published,
+    )
+    if photo:
+        row.photo = store_upload(photo, 'image', user.id, db)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return authority_response(row)
+
+@app.put('/api/admin/authorities/reorder')
+def reorder_authorities(
+    body: AuthorityReorderPayload,
+    user: User = Depends(require_permission('gestion.authorities.manage')),
+    db: Session = Depends(get_db),
+):
+    for item in body.items:
+        row = db.get(Authority, item.id)
+        if row is not None:
+            row.display_order = item.display_order
+    db.commit()
+    rows = db.scalars(select(Authority).order_by(Authority.display_order, Authority.created_at)).all()
+    return [authority_response(x) for x in rows]
+
+@app.put('/api/admin/authorities/{authority_id}')
+def update_authority(
+    authority_id: uuid.UUID,
+    name: str = Form(''),
+    professional_title: str = Form(''),
+    position: str = Form(''),
+    description: str = Form(''),
+    display_order: int = Form(0),
+    is_published: bool = Form(False),
+    photo: UploadFile | None = File(default=None),
+    user: User = Depends(require_permission('gestion.authorities.manage')),
+    db: Session = Depends(get_db),
+):
+    row = db.get(Authority, authority_id)
+    if row is None:
+        raise HTTPException(404, 'Autoridad no encontrada')
+    row.name, row.professional_title, row.position = name, professional_title, position
+    row.description, row.display_order, row.is_published = description, display_order, is_published
+    if photo:
+        previous_photo = row.photo
+        row.photo = store_upload(photo, 'image', user.id, db)
+        supersede_media(db, previous_photo)
+    db.commit()
+    db.refresh(row)
+    return authority_response(row)
+
+@app.post('/api/admin/authorities/{authority_id}/{action}')
+def toggle_authority(
+    authority_id: uuid.UUID,
+    action: str,
+    user: User = Depends(require_permission('gestion.authorities.manage')),
+    db: Session = Depends(get_db),
+):
+    if action not in {'activate', 'deactivate', 'publish', 'unpublish'}:
+        raise HTTPException(404, 'Acción no encontrada')
+    row = db.get(Authority, authority_id)
+    if row is None:
+        raise HTTPException(404, 'Autoridad no encontrada')
+    if action in {'activate', 'deactivate'}:
+        row.is_active = action == 'activate'
+    else:
+        row.is_published = action == 'publish'
+    db.commit()
+    return authority_response(row)
+
 def category_response(row: GacetaCategory) -> dict:
     return {'id': str(row.id), 'name': row.name, 'description': row.description, 'sort_order': row.sort_order, 'is_active': row.is_active}
 
@@ -487,6 +619,14 @@ def admin_media_deactivate(
     )
     if mayor is not None:
         raise HTTPException(409, 'El archivo está asociado al alcalde vigente')
+    authority = db.scalar(
+        select(Authority).where(
+            Authority.photo_media_id == media_id,
+            Authority.is_active.is_(True),
+        )
+    )
+    if authority is not None:
+        raise HTTPException(409, 'El archivo está asociado a una autoridad vigente')
     row.is_active = False
     row.deleted_at = datetime.now(timezone.utc)
     db.commit()

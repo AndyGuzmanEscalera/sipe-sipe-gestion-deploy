@@ -4,11 +4,18 @@ from app.models import Permission, Role, RolePermission
 
 PERMISSIONS = [
     'gestion.settings.read', 'gestion.settings.manage', 'gestion.mayor.read', 'gestion.mayor.manage',
-    'gestion.institutional.read', 'gestion.institutional.manage', 'gestion.gaceta.read', 'gestion.gaceta.manage',
+    'gestion.institutional.read', 'gestion.institutional.manage',
+    'gestion.authorities.read', 'gestion.authorities.manage',
+    'gestion.gaceta.read', 'gestion.gaceta.manage',
     'gestion.gaceta.publish', 'gestion.media.read', 'gestion.media.upload', 'gestion.media.manage',
     'gestion.users.read', 'gestion.users.manage', 'gestion.roles.read', 'gestion.roles.manage', 'gestion.roles.assign',
 ]
-EDITOR = {'gestion.settings.read', 'gestion.mayor.read', 'gestion.institutional.read', 'gestion.gaceta.read', 'gestion.gaceta.manage', 'gestion.gaceta.publish', 'gestion.media.read', 'gestion.media.upload'}
+EDITOR = {
+    'gestion.settings.read', 'gestion.mayor.read', 'gestion.institutional.read',
+    'gestion.authorities.read', 'gestion.authorities.manage',
+    'gestion.gaceta.read', 'gestion.gaceta.manage', 'gestion.gaceta.publish',
+    'gestion.media.read', 'gestion.media.upload',
+}
 
 def main() -> None:
     db = SessionLocal()
